@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Query classifier prompt desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e8edf1;--panel:#f7f9fa;--ink:#16222d;--muted:#5a6a78;--line:#c3ced6;--accent:#0e6b5c;--tape:#f2c230;--code:#16222d;--codeink:#dbe6ee;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10181f;--panel:#18232d;--ink:#e6edf2;--muted:#93a4b2;--line:#2c3b48;--accent:#4fc3ab;--code:#0b1218;--codeink:#cfe0ea}}
+:root[data-theme="dark"]{--bg:#10181f;--panel:#18232d;--ink:#e6edf2;--muted:#93a4b2;--line:#2c3b48;--accent:#4fc3ab;--code:#0b1218;--codeink:#cfe0ea}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Instrument Sans",system-ui,sans-serif}
+main{max-width:1080px;margin:0 auto;padding:28px 18px 48px}
+h1{font:800 clamp(28px,5vw,44px)/1.05 "Bricolage Grotesque",system-ui,sans-serif;margin:0 0 8px;letter-spacing:-.02em}
+.lede{color:var(--muted);max-width:60ch;margin:0 0 24px}
+.grid{display:grid;grid-template-columns:minmax(0,680px);gap:18px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+h2{font:600 18px/1.2 "Bricolage Grotesque",system-ui,sans-serif;margin:0 0 12px}
+label{display:block;font-weight:600;margin-bottom:6px}
+textarea{width:100%;min-height:120px;resize:vertical;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+textarea:focus,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 10px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;padding:9px 16px}
+:root[data-theme="dark"] button.primary{color:#08201b}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) button.primary{color:#08201b}}
+.chips button{font-size:14px}
+.result{margin-top:18px;border-top:1px dashed var(--line);padding-top:16px}
+.tape{display:inline-block;background:var(--tape);color:#16222d;font:800 clamp(30px,6vw,46px)/1 "Bricolage Grotesque",system-ui,sans-serif;padding:10px 18px;border-radius:4px;transform:rotate(-1.5deg);min-width:120px}
+.tape.empty{background:var(--line);color:var(--muted)}
+.hint{color:var(--muted);font-size:14px;margin:10px 0 0}
+pre{background:var(--code);color:var(--codeink);padding:14px;border-radius:8px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;font:13px/1.55 ui-monospace,Menlo,Consolas,monospace;max-height:460px;overflow-y:auto;margin:0}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.on{background:var(--ink);color:var(--bg)}
+</style>
+</head>
+<body>
+<main>
+<h1>Query classifier prompt desk</h1>
+<p class="lede">Type a customer message and see the one-word category it falls under.</p>
+<div class="grid">
+  <section>
+    <h2>Customer query</h2>
+    <label for="q">Message</label>
+    <textarea id="q" placeholder="e.g. I was charged twice for my order"></textarea>
+    <div class="chips" id="chips"></div>
+    <button class="primary" id="go">Classify query</button>
+    <div class="result" aria-live="polite">
+      <div id="tape" class="tape empty">Label</div>
+      <p class="hint">The label comes from a small keyword matcher running in this page.</p>
+    </div>
+  </section>
+</div>
+</main>
+<script>
+var CATS={
+Delivery:"Where the order is, delays, late or missing arrival, tracking, delivered but not received.",
+Shipping:"Shipping costs, methods, speed options, regions served, international or address-for-shipping questions before or during dispatch.",
+Refund:"Money back, refund status or amount, refund not received.",
+Payment:"Charges, double charges, failed or declined payments, payment methods, invoices.",
+Cancellation:"Cancelling an order or subscription before it is delivered.",
+Defect:"Item is broken, damaged, faulty, not working, or the wrong item arrived.",
+Return:"Sending an item back, exchanges, return window or return labels.",
+Account:"Login, password, profile, email or phone changes, verification codes.",
+Unknown:"Anything that fits none of the above, or is unclear."};
+var SYS="You are a customer-query classifier for an e-commerce company.\n\nTask: read one customer query and assign it to exactly one category.\n\nCategories:\n"+
+Object.keys(CATS).map(function(k){return "- "+k+": "+CATS[k]}).join("\n")+
+"\n\nRules:\n1. Choose the category that matches the customer's main request. If several apply, pick the one they most need resolved.\n2. Use Unknown if the query is unclear, off-topic, or fits no category.\n3. Output exactly one word from the list above, spelled exactly as shown.\n4. Do not add explanations, punctuation, quotes, labels, or extra text.\n\nExamples:\nQuery: My package says delivered but I never got it\nDelivery\nQuery: Do you ship to Canada and how much does it cost?\nShipping\nQuery: I was charged twice for one order\nPayment\nQuery: The screen arrived cracked\nDefect\nQuery: Hello\nUnknown";
+var RULES=[
+["Refund",["refund","money back","reimburse"]],
+["Cancellation",["cancel"]],
+["Return",["return","send back","exchange","swap"]],
+["Defect",["broken","damaged","defective","faulty","not working","stopped working","cracked","wrong item","torn","leaking"]],
+["Payment",["charged","payment","card","declined","invoice","upi","billing","paid","double charge"]],
+["Account",["password","login","log in","sign in","account","otp","verification","change my email","phone number"]],
+["Shipping",["shipping cost","shipping charge","shipping fee","ship to","international","shipping method","do you ship","shipping option","express shipping","shipping"]],
+["Delivery",["where is my","not arrived","delayed","late","tracking","delivered","haven't received","not received","still waiting","delivery"]]];
+function classify(t){t=t.toLowerCase();var best="Unknown",n=0;
+RULES.forEach(function(r){var c=0;r[1].forEach(function(k){if(t.indexOf(k)>-1)c++});if(c>n){n=c;best=r[0]}});return best}
+var SAMPLES=["Where is my order? It was due Monday","How much is shipping to Canada?","I want my money back","I was charged twice","Please cancel my order","The mug arrived broken","How do I send this back?","I forgot my password","What's your favourite colour?"];
+var q=document.getElementById("q"),tape=document.getElementById("tape");
+SAMPLES.forEach(function(s){var b=document.createElement("button");b.textContent=s;b.onclick=function(){q.value=s;run()};document.getElementById("chips").appendChild(b)});
+function run(){var v=q.value.trim();if(!v){tape.textContent="Label";tape.className="tape empty";return}
+tape.textContent=classify(v);tape.className="tape"}
+document.getElementById("go").onclick=run;
+
+</script>
+</body>
+</html>
